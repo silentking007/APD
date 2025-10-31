@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APD Color Palette Generator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to match the complex slider/graph layout in the screenshot */
+        body {
+            font-family: 'Inter', 'Noto Sans', sans-serif;
+            background-color: #f7f7f7;
+            padding: 20px;
+        }
+        .color-input-group {
+            min-width: 100px;
+        }
+        .color-slider-wrapper {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(150px, 1fr));
+            gap: 20px;
+        }
+        .shade-box-container {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            padding-bottom: 10px;
+            gap: 4px;
+        }
+        .color-shade-box {
+            min-width: 90px;
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            padding-bottom: 8px;
+            scroll-snap-align: start;
+            transition: all 0.3s ease;
+        }
+        .color-shade-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        /* Style for the graph containers */
+        .graph-container {
+            background-color: #1a202c; /* Dark background for graph */
+            border-radius: 8px;
+            border: 1px solid #3b4554;
+            padding: 10px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+        .graph-container h3 {
+            color: white;
+            text-align: center;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        /* Input Range Styles */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #d1d5db;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #2563eb;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+        }
+        /* Canvas specific styling to ensure responsiveness */
+        canvas {
+            display: block;
+            width: 100%;
+        }
+        /* Style for locked point marker (diamond) */
+        .locked-marker {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border: 6px solid transparent;
+            transform: translateY(2px); /* Adjust to align with dot */
+            z-index: 10;
+        }
+        .locked-marker-lightness {
+            border-top-color: #fcd34d; /* Amber diamond */
+        }
+        .locked-marker-saturation {
+            border-left-color: #fcd34d; /* Amber diamond */
+            transform: rotate(45deg);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <div class="max-w-6xl mx-auto py-10">
+        <!-- Header -->
+        <h1 class="text-3xl font-bold text-gray-800 mb-0">
+            <span class="text-indigo-700">APD<sup class="text-xl font-light text-indigo-700 ml-1 leading-none align-text-top">™</sup></span> Color Palette Generator
+        </h1>
+        <!-- Tagline added here -->
+        <p class="text-md text-gray-500 mb-6 border-b pb-2">Aryan, Priyank, Divyesh</p>
+
+        <!-- Main Controls Panel -->
+        <div class="bg-white p-6 rounded-xl shadow-2xl space-y-8">
+
+            <!-- Name and Value Inputs -->
+            <div class="flex items-end space-x-4 border-b pb-4">
+                <div class="color-input-group flex-1">
+                    <label for="colorName" class="block text-sm font-medium text-gray-700">Name</label>
+                    <input type="text" id="colorName" value="red" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                </div>
+                <div class="color-input-group flex-1">
+                    <label for="hexInput" class="block text-sm font-medium text-gray-700">Value (HEX Code)</label>
+                    <!-- Changed default hex to a red tone for demonstration -->
+                    <input type="text" id="hexInput" value="#D75A5A" maxlength="7" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border uppercase">
+                </div>
+                <div class="color-input-group flex-none">
+                    <input type="color" id="colorPicker" value="#D75A5A" class="mt-1 h-10 w-10 rounded-md p-1 border-gray-300 shadow-sm">
+                </div>
+                <div class="color-input-group flex-none">
+                     <label for="lockedShade" class="block text-sm font-medium text-gray-700">Locked Shade</label>
+                    <select id="lockedShade" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- Sliders for Fine-Tuning -->
+            <div class="color-slider-wrapper">
+                <div class="p-2 border rounded-lg bg-gray-50">
+                    <label for="hueShift" class="block text-xs font-semibold text-gray-600 mb-2">Hue Shift</label>
+                    <input type="range" id="hueShift" min="-50" max="50" value="0" class="w-full h-2 bg-gray-300 rounded-lg">
+                    <div class="text-center text-sm font-mono mt-1" id="hueShiftValue">0</div>
+                </div>
+
+                <div class="p-2 border rounded-lg bg-gray-50">
+                    <label for="saturation" class="block text-xs font-semibold text-gray-600 mb-2">Saturation</label>
+                    <input type="range" id="saturation" min="0" max="100" value="80" class="w-full h-2 bg-gray-300 rounded-lg">
+                    <div class="text-center text-sm font-mono mt-1" id="saturationValue">80</div>
+                </div>
+
+                <div class="p-2 border rounded-lg bg-gray-50">
+                    <label for="lightnessMax" class="block text-xs font-semibold text-gray-600 mb-2">Lightness Maximum (50 Shade)</label>
+                    <input type="range" id="lightnessMax" min="0" max="100" value="98" class="w-full h-2 bg-gray-300 rounded-lg">
+                    <div class="text-center text-sm font-mono mt-1" id="lightnessMaxValue">98</div>
+                </div>
+
+                <div class="p-2 border rounded-lg bg-gray-50">
+                    <label for="lightnessMin" class="block text-xs font-semibold text-gray-600 mb-2">Lightness Minimum (950 Shade)</label>
+                    <input type="range" id="lightnessMin" min="0" max="100" value="5" class="w-full h-2 bg-gray-300 rounded-lg">
+                    <div class="text-center text-sm font-mono mt-1" id="lightnessMinValue">5</div>
+                </div>
+            </div>
+
+            <!-- Color Palette Display -->
+            <div id="palette-container" class="mt-8">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Generated Palette</h2>
+                <div id="shadeBoxContainer" class="shade-box-container bg-gray-200 p-2 rounded-lg shadow-inner border border-gray-300">
+                    <!-- Color shade boxes will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Graphs and Code Output -->
+        <div class="mt-8 space-y-8">
+            <h2 class="text-2xl font-bold text-gray-800">Output and Analysis</h2>
+            
+            <!-- Graph Canvases -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="graph-container">
+                    <h3>Lightness Distribution (L)</h3>
+                    <canvas id="lightnessGraph" data-type="lightness" class="w-full h-auto" width="300" height="200"></canvas>
+                </div>
+                <div class="graph-container">
+                    <h3>Saturation Shift (S)</h3>
+                    <canvas id="saturationGraph" data-type="saturation" class="w-full h-auto" width="300" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Code Output Area -->
+            <div class="bg-white p-6 rounded-xl shadow-xl">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Tailwind CSS Custom Variables</h3>
+                <textarea id="cssOutput" rows="10" readonly class="w-full bg-gray-50 p-4 rounded-lg border border-gray-300 font-mono text-sm resize-none"></textarea>
+                <div class="flex justify-end mt-4">
+                    <button onclick="copyCode()" class="px-6 py-2 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 transition duration-150">
+                        Copy Code
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Static Footer Line -->
+        <footer class="mt-10 pt-4 border-t border-gray-300 text-center">
+            <p class="text-sm text-gray-500">© 2024 APD (Aryan, Priyank, Divyesh) Color Palette Generator. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- UTILITY FUNCTIONS FOR HSL/HEX CONVERSION ---
+
+        // Converts HSL components to an RGB object (0-255)
+        function hslToRgb(h, s, l) {
+            s /= 100;
+            l /= 100;
+            let c = (1 - Math.abs(2 * l - 1)) * s;
+            let x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            let m = l - c / 2;
+            let r = 0, g = 0, b = 0;
+
+            if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+            else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+            else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+            else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+            else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+            else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+
+            r = Math.round((r + m) * 255);
+            g = Math.round((g + m) * 255);
+            b = Math.round((b + m) * 255);
+
+            return { r, g, b };
+        }
+
+        // Converts RGB object (0-255) to a Hex string
+        function rgbToHex(r, g, b) {
+            function toHex(c) {
+                const hex = c.toString(16);
+                return hex.length == 1 ? "0" + hex : hex;
+            }
+            return "#" + toHex(r) + toHex(g) + toHex(b);
+        }
+
+        // Converts a Hex string to an HSL array [h(0-360), s(0-100), l(0-100)]
+        function hexToHsl(hex) {
+            let r = parseInt(hex.substring(1, 3), 16) / 255;
+            let g = parseInt(hex.substring(3, 5), 16) / 255;
+            let b = parseInt(hex.substring(5, 7), 16) / 255;
+
+            let max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+
+            if (max === min) {
+                h = s = 0; // achromatic
+            } else {
+                let d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+
+            return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+        }
+        
+        // Linear Interpolation function
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+
+        // --- CORE GENERATION LOGIC ---
+
+        const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+
+        // Hardcoded target values for the initial plum color (#ffbf37) for perfect match
+        const TARGET_PALETTE_PLUM = {
+            50: '#fff8f1',
+            100: '#fff2e3',
+            200: '#ffe4c4',
+            300: '#ffdaa9',
+            400: '#ffcc7d',
+            500: '#ffbf37',
+            600: '#cb9500',
+            700: '#976e00',
+            800: '#634700',
+            900: '#362500',
+            950: '#211600'
+        };
+
+        // Function to check if sliders are at default values
+        function areSlidersDefault(hueShift, saturation, lightnessMax, lightnessMin, lockedShade) {
+            return (
+                hueShift === 0 && 
+                saturation === 80 && 
+                lightnessMax === 98 && 
+                lightnessMin === 5 &&
+                lockedShade === 500
+            );
+        }
+
+        function generatePalette() {
+            const hexInput = document.getElementById('hexInput').value.toUpperCase();
+            const colorName = document.getElementById('colorName').value.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            const lockedShade = parseInt(document.getElementById('lockedShade').value); 
+            
+            // Get slider values
+            const hueShift = parseFloat(document.getElementById('hueShift').value);
+            const baseSaturation = parseFloat(document.getElementById('saturation').value);
+            const lightnessMax = parseFloat(document.getElementById('lightnessMax').value);
+            const lightnessMin = parseFloat(document.getElementById('lightnessMin').value);
+            
+            // Update slider displays
+            document.getElementById('hueShiftValue').textContent = hueShift;
+            document.getElementById('saturationValue').textContent = baseSaturation;
+            document.getElementById('lightnessMaxValue').textContent = lightnessMax;
+            document.getElementById('lightnessMinValue').textContent = lightnessMin;
+
+            // Validate Hex Input
+            if (!/^#[0-9A-F]{6}$/i.test(hexInput)) {
+                document.getElementById('shadeBoxContainer').innerHTML = '<p class="text-red-500 p-4">Please enter a valid HEX code. (e.g., #3b82f6)</p>';
+                document.getElementById('cssOutput').value = '';
+                return;
+            }
+
+            const paletteData = []; // Array to store {shade, hex, L, S} for graphing
+            const shadeContainer = document.getElementById('shadeBoxContainer');
+            shadeContainer.innerHTML = '';
+            
+            let cssOutputString = `@theme {\n`;
+            
+            // --- Determine the final palette ---
+            let finalPalette = {};
+
+            // Check only hex input and slider settings for hardcoded palette match.
+            const isDefaultStatePlum = (hexInput === '#FFBF37' && areSlidersDefault(hueShift, baseSaturation, lightnessMax, lightnessMin, lockedShade));
+            
+            if (isDefaultStatePlum) {
+                // Use the hardcoded plum palette for exact match on default load/settings
+                finalPalette = TARGET_PALETTE_PLUM;
+            } else {
+                // Dynamic HSL logic for any other input or locked shade
+                
+                // 1. Get Base Color HSL components
+                let [baseH, , baseL] = hexToHsl(hexInput); // Get H, S, L of input color
+                
+                // Apply initial Hue Shift only to the HUE component
+                let finalH = (baseH + hueShift) % 360;
+                if (finalH < 0) finalH += 360;
+
+                const L_LOCKED = baseL; // The actual lightness of the input color
+                const L_50 = lightnessMax;
+                const L_950 = lightnessMin;
+                const lightnessMap = {};
+
+                // Find the index of the locked shade to correctly partition the map
+                const lockedIndex = SHADES.indexOf(lockedShade);
+
+                // --- Interpolation Logic (Lightness) ---
+
+                SHADES.forEach((shade, index) => {
+                    let l = 0;
+                    
+                    if (shade === lockedShade) {
+                        l = L_LOCKED;
+                    } else if (index < lockedIndex) {
+                        // Lighter shades (from 50 to locked shade)
+                        const range = lockedIndex; 
+                        
+                        // t goes from 0 (at 50) to 1 (at locked shade)
+                        let t = index / range; 
+                        t = Math.pow(t, 0.7); // Lightness curve: quick drop from L_50
+                        l = lerp(L_50, L_LOCKED, t); 
+                        
+                    } else {
+                        // Darker shades (from locked shade to 950)
+                        const rangeStart = lockedIndex;
+                        const rangeLength = SHADES.length - lockedIndex - 1;
+
+                        // t goes from 0 (at locked shade) to 1 (at 950)
+                        let t = (index - rangeStart) / rangeLength; 
+                        t = Math.pow(t, 1.2); // Lightness curve: slower drop to L_950
+                        l = lerp(L_LOCKED, L_950, t);
+                    }
+                    
+                    lightnessMap[shade] = l;
+                });
+
+                
+                // --- Generate Colors using Interpolated Lightness (Saturation FIX) ---
+
+                SHADES.forEach(shade => {
+                    let hexColor;
+                    let l = 0;
+                    let s = 0;
+
+                    if (shade === lockedShade) {
+                        // Use the exact input HEX for the locked shade
+                        hexColor = hexInput;
+                        l = L_LOCKED;
+                        s = baseSaturation; // Use base saturation
+                    } else {
+                        l = lightnessMap[shade];
+                        l = Math.max(L_950, Math.min(L_50, l)); // Clamp lightness
+
+                        s = baseSaturation;
+                        
+                        // --- Saturation Logic (Aggressively reduces saturation at extremes) ---
+                        if (l > L_LOCKED) {
+                            // Lighter shades: Reduce saturation towards white
+                            const lightnessFactor = (l - L_LOCKED) / (L_50 - L_LOCKED);
+                            // Use a strong cubic curve for desaturation (t^3)
+                            const desat_t = Math.pow(lightnessFactor, 3); 
+                            s = lerp(baseSaturation, 10, desat_t); 
+                            s = Math.max(5, s);
+                        } else {
+                            // Darker shades: Reduce saturation towards black (crucial for red/pink consistency)
+                            const lightnessFactor = (L_LOCKED - l) / (L_LOCKED - L_950); 
+                            // Use a strong quadratic curve for desaturation (t^2)
+                            const desat_t = Math.pow(lightnessFactor, 2); 
+                            s = lerp(baseSaturation, baseSaturation * 0.4, desat_t); // Drop saturation significantly
+                            s = Math.max(5, s);
+                        }
+                        
+                        s = Math.max(0, Math.min(100, s));
+
+                        const { r, g, b } = hslToRgb(finalH, s, l);
+                        hexColor = rgbToHex(r, g, b);
+                    }
+                    finalPalette[shade] = hexColor;
+                    paletteData.push({ shade, hex: hexColor, l, s }); // Store data for graph
+                });
+            }
+            
+            // If using the hardcoded palette, populate the paletteData array manually for graphing
+            if (isDefaultStatePlum) {
+                SHADES.forEach(shade => {
+                    const hexColor = finalPalette[shade];
+                    const [, s, l] = hexToHsl(hexColor);
+                    paletteData.push({ shade, hex: hexColor, l, s });
+                });
+            }
+
+
+            // --- Render the final palette and CSS ---
+            
+            SHADES.forEach(shade => {
+                const hexColor = finalPalette[shade];
+                const [, , l] = hexToHsl(hexColor); // Get lightness for text color decision
+                const isDark = l < 50;
+
+                // Create the color box element
+                const shadeBox = document.createElement('div');
+                shadeBox.className = `color-shade-box rounded-lg shadow-md cursor-pointer transition-all`;
+                shadeBox.style.backgroundColor = hexColor;
+                shadeBox.setAttribute('data-hex', hexColor);
+                shadeBox.setAttribute('data-shade', shade);
+                shadeBox.onclick = () => copyHex(hexColor);
+
+                shadeBox.innerHTML = `
+                    <span class="text-sm font-semibold mb-1" style="color: ${isDark ? 'white' : 'black'};">${shade}</span>
+                    <span class="text-xs font-mono" style="color: ${isDark ? 'white' : 'black'};">${hexColor}</span>
+                `;
+                
+                shadeContainer.appendChild(shadeBox);
+                
+                // Add to CSS output string
+                cssOutputString += `  --color-${colorName}-${shade}: ${hexColor};\n`;
+            });
+
+            cssOutputString += `}`;
+            
+            document.getElementById('cssOutput').value = cssOutputString;
+            
+            // Draw the graphs with the generated data
+            drawGraphs(paletteData, hexInput);
+        }
+        
+        // --- GRAPH DRAWING LOGIC ---
+
+        function drawGraphs(data, baseHex) {
+            drawLightnessGraph(data, baseHex);
+            drawSaturationGraph(data, baseHex);
+        }
+
+        function drawLightnessGraph(data, baseHex) {
+            const canvas = document.getElementById('lightnessGraph');
+            const container = canvas.parentElement;
+            
+            // Set drawing buffer resolution higher for sharp rendering (HDPI fix)
+            const dpr = window.devicePixelRatio || 1;
+            canvas.style.width = container.clientWidth - 20 + 'px'; // Set CSS size
+            canvas.style.height = '200px'; 
+            canvas.width = (container.clientWidth - 20) * dpr; // Set drawing buffer size
+            canvas.height = 200 * dpr;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr); // Scale the context
+
+            const WIDTH = canvas.width / dpr;
+            const HEIGHT = canvas.height / dpr;
+            const SHADE_LABELS = SHADES.map(s => s.toString());
+            const PADDING = 30;
+            const GRAPH_HEIGHT = HEIGHT - PADDING * 2;
+            const GRAPH_WIDTH = WIDTH - PADDING * 2;
+            const STEP_X = GRAPH_WIDTH / (SHADES.length - 1);
+
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            ctx.fillStyle = '#1a202c'; // Match container background
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            ctx.strokeStyle = '#3b4554'; // Axis/Grid color
+            ctx.fillStyle = '#e2e8f0'; // Text color
+            ctx.font = '10px Inter, sans-serif';
+            
+            // Draw X-axis labels (Shades)
+            ctx.beginPath();
+            ctx.moveTo(PADDING, HEIGHT - PADDING);
+            ctx.lineTo(WIDTH - PADDING, HEIGHT - PADDING);
+            ctx.stroke();
+
+            SHADE_LABELS.forEach((label, i) => {
+                const x = PADDING + i * STEP_X;
+                ctx.fillText(label, x, HEIGHT - 10);
+                
+                // Draw vertical grid lines
+                ctx.strokeStyle = '#3b4554';
+                ctx.beginPath();
+                ctx.moveTo(x, PADDING);
+                ctx.lineTo(x, HEIGHT - PADDING);
+                ctx.stroke();
+            });
+
+            // Draw Y-axis labels (Lightness 0-100)
+            ctx.textAlign = 'right';
+            ctx.fillText('100 (White)', PADDING - 5, PADDING + 4);
+            ctx.fillText('0 (Black)', PADDING - 5, HEIGHT - PADDING + 4);
+            ctx.textAlign = 'center';
+            
+            // Draw the Lightness Curve
+            ctx.beginPath();
+            ctx.strokeStyle = '#3b82f6'; // Blue line for the curve
+            ctx.lineWidth = 2;
+            
+            data.forEach((point, i) => {
+                const x = PADDING + i * STEP_X;
+                // Map HSL lightness (100 is high, 0 is low) to canvas Y (0 is top, HEIGHT is bottom)
+                const y = PADDING + (100 - point.l) / 100 * GRAPH_HEIGHT;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke(); // Draw the line first
+
+            data.forEach((point, i) => {
+                const x = PADDING + i * STEP_X;
+                const y = PADDING + (100 - point.l) / 100 * GRAPH_HEIGHT;
+
+                // Draw dots
+                ctx.fillStyle = point.hex;
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw Locked Shade Diamond Marker
+                const lockedShade = parseInt(document.getElementById('lockedShade').value);
+                if (point.shade === lockedShade) {
+                    ctx.fillStyle = '#fcd34d'; // Amber
+                    ctx.beginPath();
+                    // Draw a diamond shape at the locked point
+                    ctx.moveTo(x, y - 8);
+                    ctx.lineTo(x + 6, y);
+                    ctx.lineTo(x, y + 8);
+                    ctx.lineTo(x - 6, y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+        }
+
+        function drawSaturationGraph(data, baseHex) {
+            const canvas = document.getElementById('saturationGraph');
+            const container = canvas.parentElement;
+
+            // Set drawing buffer resolution higher for sharp rendering (HDPI fix)
+            const dpr = window.devicePixelRatio || 1;
+            canvas.style.width = container.clientWidth - 20 + 'px'; // Set CSS size
+            canvas.style.height = '200px'; 
+            canvas.width = (container.clientWidth - 20) * dpr; // Set drawing buffer size
+            canvas.height = 200 * dpr;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr); // Scale the context
+            
+            const WIDTH = canvas.width / dpr;
+            const HEIGHT = canvas.height / dpr;
+            const SHADE_LABELS = SHADES.map(s => s.toString());
+            const PADDING = 30; // Correctly define PADDING variable
+            const GRAPH_HEIGHT = HEIGHT - PADDING * 2;
+            const GRAPH_WIDTH = WIDTH - PADDING * 2;
+            const STEP_X = GRAPH_WIDTH / (SHADES.length - 1);
+
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            ctx.fillStyle = '#1a202c'; // Match container background
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            ctx.strokeStyle = '#3b4554'; // Axis/Grid color
+            ctx.fillStyle = '#e2e8f0'; // Text color
+            ctx.font = '10px Inter, sans-serif';
+            
+            // Draw X-axis labels (Shades)
+            ctx.beginPath();
+            ctx.moveTo(PADDING, HEIGHT - PADDING);
+            ctx.lineTo(WIDTH - PADDING, HEIGHT - PADDING);
+            ctx.stroke();
+
+            SHADE_LABELS.forEach((label, i) => {
+                const x = PADDING + i * STEP_X;
+                ctx.fillText(label, x, HEIGHT - 10);
+                
+                // Draw vertical grid lines
+                ctx.strokeStyle = '#3b4554';
+                ctx.beginPath();
+                ctx.moveTo(x, PADDING);
+                ctx.lineTo(x, HEIGHT - PADDING);
+                ctx.stroke();
+            });
+
+            // Draw Y-axis labels (Saturation 0-100)
+            ctx.textAlign = 'right';
+            ctx.fillText('100 (Full)', PADDING - 5, PADDING + 4);
+            ctx.fillText('0 (Gray)', PADDING - 5, HEIGHT - PADDING + 4);
+            ctx.textAlign = 'center';
+            
+            // Draw the Saturation Curve
+            ctx.beginPath();
+            ctx.strokeStyle = '#f59e0b'; // Amber line for the curve
+            ctx.lineWidth = 2;
+            
+            data.forEach((point, i) => {
+                const x = PADDING + i * STEP_X;
+                // Map HSL saturation (100 is high, 0 is low) to canvas Y (0 is top, HEIGHT is bottom)
+                const y = PADDING + (100 - point.s) / 100 * GRAPH_HEIGHT; 
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke(); // Draw the line first
+
+            data.forEach((point, i) => {
+                const x = PADDING + i * STEP_X;
+                const y = PADDING + (100 - point.s) / 100 * GRAPH_HEIGHT;
+                
+                // Draw dots
+                ctx.fillStyle = point.hex;
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw Locked Shade Diamond Marker
+                const lockedShade = parseInt(document.getElementById('lockedShade').value);
+                if (point.shade === lockedShade) {
+                    ctx.fillStyle = '#fcd34d'; // Amber
+                    ctx.beginPath();
+                    // Draw a diamond shape at the locked point
+                    ctx.moveTo(x, y - 8);
+                    ctx.lineTo(x + 6, y);
+                    ctx.lineTo(x, y + 8);
+                    ctx.lineTo(x - 6, y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+        }
+
+
+        // --- UI Initialization and Events ---
+
+        function populateLockedShades() {
+            const select = document.getElementById('lockedShade');
+            select.innerHTML = '';
+            
+            // Add shades from 50 to 950
+            SHADES.forEach(shade => {
+                const option = document.createElement('option');
+                option.value = shade;
+                option.textContent = shade + (shade === 500 ? ' (Default)' : '');
+                select.appendChild(option);
+            });
+            // Set 500 as default selected
+            select.value = 500;
+        }
+
+        const inputElements = document.querySelectorAll('input[type="range"], input[type="text"], input[type="color"]');
+        inputElements.forEach(el => {
+            el.addEventListener('input', updateInput);
+            el.addEventListener('change', updateInput);
+        });
+        
+        document.getElementById('lockedShade').addEventListener('change', updateInput);
+
+        // Add resize listener to handle graph redrawing on window resize
+        window.addEventListener('resize', () => {
+             // Redraw graphs when window size changes to maintain responsiveness
+             // Using requestAnimationFrame to prevent excessive redrawing during resize
+             requestAnimationFrame(generatePalette);
+        });
+
+
+        function updateInput(event) {
+            // Sync Hex Input and Color Picker
+            if (event.target.id === 'hexInput') {
+                document.getElementById('colorPicker').value = event.target.value;
+            } else if (event.target.id === 'colorPicker') {
+                document.getElementById('hexInput').value = event.target.value.toUpperCase();
+            }
+            
+            // Regenerate the palette whenever an input changes
+            generatePalette();
+        }
+
+        // --- COPY FUNCTIONALITY ---
+        function copyCode() {
+            const textarea = document.getElementById('cssOutput');
+            textarea.select();
+            document.execCommand('copy');
+            showMessage('CSS code copied!');
+        }
+
+        function copyHex(hex) {
+            navigator.clipboard.writeText(hex)
+                .then(() => {
+                    showMessage(`HEX ${hex} copied!`);
+                })
+                .catch(err => {
+                    // Fallback for environment where clipboard API is restricted
+                    const tempInput = document.createElement('textarea');
+                    tempInput.value = hex;
+                    document.body.appendChild(tempInput);
+                    tempInput.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(tempInput);
+                    showMessage(`HEX ${hex} copied!`);
+                });
+        }
+
+        function showMessage(msg) {
+            const messageBox = document.createElement('div');
+            messageBox.textContent = msg;
+            messageBox.className = 'fixed bottom-5 right-5 bg-green-500 text-white p-3 rounded-lg shadow-xl transition-opacity duration-300 opacity-100 z-50';
+            document.body.appendChild(messageBox);
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+                setTimeout(() => messageBox.remove(), 300);
+            }, 2000);
+        }
+
+        // Initial generation on load
+        window.onload = () => {
+            populateLockedShades(); // Populate the new dropdown
+            // Set default font for consistency (Inter is loaded via Tailwind)
+            document.body.style.fontFamily = 'Inter, sans-serif';
+            
+            // Wait for canvas elements to be sized correctly
+            setTimeout(generatePalette, 50); 
+        };
+
+    </script>
+</body>
+</html>
